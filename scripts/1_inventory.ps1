@@ -58,7 +58,7 @@ resources
 | where type =~ 'microsoft.compute/virtualmachines'
 | extend vmSize = tostring(properties.hardwareProfile.vmSize)
 | extend powerState = tostring(properties.extended.instanceView.powerState.code)
-| project subscriptionId, resourceGroup, name, vmSize, powerState, tags
+| project subscriptionId, resourceGroup, name, location, vmSize, powerState, tags
 "@
 
 $all = New-Object System.Collections.Generic.List[object]
@@ -84,6 +84,7 @@ $export = foreach ($v in $all) {
         subscriptionId = $v.subscriptionId
         resourceGroup  = $v.resourceGroup
         name           = $v.name
+        location       = $v.location
         vmSize         = $v.vmSize
         powerState     = $v.powerState
         tags           = $v.tags

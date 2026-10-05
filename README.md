@@ -47,7 +47,36 @@ A single `.xlsx` workbook with four sheets:
    Connect-AzAccount -TenantId <your-tenant-id>
    ```
 
-## Running the report
+## Running the reports
+
+The recommended entry point is the advisory runner. With no switch, it runs
+both notices and creates two separately labeled workbooks:
+
+```powershell
+pwsh ./scripts/run_advisories.ps1
+```
+
+Run one notice only when needed:
+
+```powershell
+pwsh ./scripts/run_advisories.ps1 -PRFR4Z
+pwsh ./scripts/run_advisories.ps1 -JGW1KG0
+```
+
+Use `-Both` for an explicit both-advisories run. Use `-SkipInventory` or
+`-SkipCost` only when the corresponding data already exists in `data/`.
+
+Outputs are written to the repository root:
+
+- `VM_Impact_PRFR__4Z.xlsx`
+- `VM_Impact_JGW1_KG0.xlsx`
+
+`PRFR-_4Z` reports retirement and v1/v2 price-impact families. `JGW1-KG0`
+reports the VM portion of the regional 8% to 17% notice by region and SKU
+family. JGW1-KG0 also covers Azure Storage, but Storage is intentionally out of
+scope for this VM-only toolkit and requires a separate analysis.
+
+### Legacy four-step workflow
 
 Run the four steps in order **from the repository root**. Each step writes its
 output into a local `data/` folder (also git-ignored).

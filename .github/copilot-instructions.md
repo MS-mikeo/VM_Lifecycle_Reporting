@@ -14,7 +14,15 @@ GitHub repo for other customers to reuse.
 It does **not** write to Azure. It only queries Azure Resource Graph and Cost
 Management using the user's existing signed-in Azure context.
 
-## Architecture: a 4-step pipeline
+## Architecture: advisory runner plus legacy pipeline
+
+The supported publishing workflow is `scripts/run_advisories.ps1`. It defaults
+to both notices and accepts `-PRFR4Z`, `-JGW1KG0`, or `-Both`. It runs the
+inventory once, then creates advisory-specific rows, cost data, and workbooks.
+The advisory-specific files are named with the tracking ID so the two notices
+cannot overwrite each other's local data.
+
+The original four-step pipeline remains available for backward compatibility:
 
 Each step reads/writes JSON in a local `data/` folder (git-ignored). Run order
 matters; later steps depend on earlier outputs. All commands run **from the repo
@@ -22,7 +30,7 @@ root**.
 
 | Step | Script | Reads | Writes |
 |------|--------|-------|--------|
-| 1 | [scripts/1_inventory.ps1](scripts/1_inventory.ps1) | `config.json` | `data/vms.json`, `data/submap.json` |
+| 1 | [scripts/1_inventory.ps1](scripts/1_inventory.ps1) | `config.json` | `data/vms.json`, `data/submap.json` (including VM location) |
 | 2 | [scripts/2_build_rows.py](scripts/2_build_rows.py) | `config.json`, `data/vms.json`, `data/submap.json` | `data/rows.json` |
 | 3 | [scripts/3_cost.ps1](scripts/3_cost.ps1) | `config.json`, `data/rows.json` | `data/cost.json`, `data/cost_window.json`, `data/cost_errors.json` |
 | 4 | [scripts/4_build_report.py](scripts/4_build_report.py) | `config.json`, `data/rows.json`, `data/cost.json`, `data/cost_window.json`, `data/vms.json`, `data/submap.json` | `<Org>_<Title>.xlsx` at repo root |
@@ -41,8 +49,9 @@ step 2 and step 4. It is the single source of truth for the SKU taxonomy.
    advisory. Edit here only when adapting to an advisory that covers different VM
    families.
 
-When asked to "support a new advisory", first check whether it's just a
-config change (dates/percent/tenant) before touching `classify.py`.
+Supported advisory rules for the publishing runner live in
+[`scripts/advisories.json`](../scripts/advisories.json). Prefer adding a
+profile there over creating a second customer-specific script set.
 
 ## Key domain facts (don't re-derive these)
 
@@ -62,6 +71,10 @@ config change (dates/percent/tenant) before touching `classify.py`.
   `Dv2/Dsv2`) so the Cost Impact sheet doesn't show confusing duplicate rows.
   All variants are still counted once in the wave total — there is no
   double-counting.
+
+- **JGW1-KG0 is regional**: its VM impact is limited to the seven regions and
+  excluded VM families listed in `scripts/advisories.json`. Its Storage scope
+  is not included in this repository.
 
 ## VM size classification (how `classify.py` works)
 
@@ -102,6 +115,17 @@ into `data/` (renamed to `vms.json`, `submap.json`, `cost.json`,
 and 4 and confirm the printed counts and cost totals are unchanged. Clean up the
 staged `data/`, `config.json`, and generated `.xlsx` afterward so the repo stays
 publish-ready.
+
+For advisory changes, first run the classifiers without Azure calls by using
+existing `data/vms.json` and `data/submap.json`:
+
+```powershell
+python scripts/2_build_advisory_rows.py --advisory PRFR-_4Z
+python scripts/2_build_advisory_rows.py --advisory JGW1-KG0
+```
+
+Then compile-check Python and parse-check PowerShell before a live run. A live
+run requires the user's existing `Connect-AzAccount` session.
 
 ## Scope discipline
 

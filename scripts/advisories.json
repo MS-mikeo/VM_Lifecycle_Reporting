@@ -1,0 +1,31 @@
+{
+  "PRFR-_4Z": {
+    "title": "Azure VM Retirement and Price-Change Impact",
+    "mode": "prfr",
+    "effectiveDate": "2027-02-01",
+    "retirementEndOfLife": "2029-11-15",
+    "priceIncreasePercent": 25,
+    "notes": [
+      "Existing Reserved Instance pricing is locked at purchase; amortized cost includes RI-covered usage and is an upper-bound estimate for RI-covered VMs."
+    ]
+  },
+  "JGW1-KG0": {
+    "title": "Regional Azure VM Price-Change Impact",
+    "mode": "jgw",
+    "effectiveDate": "2027-02-01",
+    "regions": {
+      "westeurope": 0.09,
+      "northeurope": 0.17,
+      "francecentral": 0.11,
+      "francesouth": 0.11,
+      "norwayeast": 0.09,
+      "norwaywest": 0.09,
+      "southeastasia": 0.08
+    },
+    "excludedFamilies": ["Bv1", "D", "Ds", "F", "Fs", "G", "Gs", "L", "NP", "HC", "Av2", "Amv2", "Dv2", "Dsv2", "Fsv2", "Lsv2", "Dsv7", "Ddsv7", "Dlsv7", "Dldsv7", "Esv7", "Edsv7"],
+    "notes": [
+      "This report assesses Virtual Machines only. JGW1-KG0 also covers Azure Storage, which requires a separate analysis.",
+      "Existing Reserved Instance pricing is locked at purchase."
+    ]
+  }
+}
