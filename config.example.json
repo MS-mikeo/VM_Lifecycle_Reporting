@@ -1,0 +1,18 @@
+{
+  "tenantId": "00000000-0000-0000-0000-000000000000",
+  "organizationName": "Your Organization",
+  "reportTitle": "Azure VM Retirement & Price-Change Impact",
+  "advisoryReference": "Microsoft Health Advisory (example: PRFR-_XX)",
+
+  "priceIncreasePercent": 25,
+  "costWindowDays": 30,
+
+  "retirementEndOfLife": "2029-11-15",
+  "priceIncreaseEffective": "2027-02-01",
+
+  "retirementFamilies": ["Dv3", "Dsv3", "Ev3", "Esv3"],
+  "priceFamiliesV1": ["Bv1", "D", "Ds", "F", "Fs", "G", "Gs", "Ls", "NP", "HC"],
+  "priceFamiliesV2": ["Av2", "Amv2", "Dv2", "Dsv2", "Fsv2", "Lsv2"],
+
+  "tagColumns": []
+}

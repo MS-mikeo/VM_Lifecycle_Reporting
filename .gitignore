@@ -1,0 +1,21 @@
+# ---- Local configuration (contains your tenant ID) ----
+config.json
+
+# ---- Generated data (may contain sensitive inventory / cost data) ----
+data/
+*.xlsx
+~$*.xlsx
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.Python
+
+# ---- Editor / OS ----
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
