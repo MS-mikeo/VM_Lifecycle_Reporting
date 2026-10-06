@@ -135,17 +135,6 @@ and parse-check PowerShell before a live run. A live run requires the user's
 existing `Connect-AzAccount` session. Clean up staged `data/`, `config.json`, and
 generated `.xlsx` afterward so the repo stays publish-ready.
 
-For advisory changes, first run the classifiers without Azure calls by using
-existing `data/vms.json` and `data/submap.json`:
-
-```powershell
-python scripts/2_build_advisory_rows.py --advisory PRFR-_4Z
-python scripts/2_build_advisory_rows.py --advisory JGW1-KG0
-```
-
-Then compile-check Python and parse-check PowerShell before a live run. A live
-run requires the user's existing `Connect-AzAccount` session.
-
 ## Scope discipline
 
 Keep this tool small and read-only. Do not add write operations against Azure,
