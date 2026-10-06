@@ -5,106 +5,139 @@ any script.
 
 ## What this project is
 
-A small, **read-only** toolkit that generates a multi-sheet Excel report showing
-which VMs in an Azure tenant are affected by a Microsoft health advisory
-(retirements + price increases) and the estimated cost impact. It is designed to
-be run manually by a user from their own machine, then published as a standalone
-GitHub repo for other customers to reuse.
+A small, **read-only** toolkit that generates multi-sheet Excel workbooks showing
+which VMs (and, for some advisories, storage) in an Azure tenant are affected by a
+Microsoft health advisory — retirements, price increases, and regional price
+changes — plus an estimated cost impact. It is run manually by a user from their
+own machine and is published as a standalone, customer-agnostic GitHub repo.
 
 It does **not** write to Azure. It only queries Azure Resource Graph and Cost
 Management using the user's existing signed-in Azure context.
 
-## Architecture: a 4-step pipeline
+## Architecture: one advisory-driven pipeline
+
+The single supported entry point is [`scripts/run_advisories.ps1`](../scripts/run_advisories.ps1).
+It defaults to both notices and accepts `-PRFR4Z`, `-JGW1KG0`, or `-Both`, plus
+`-SkipInventory` / `-SkipCost`. It runs inventory once, then builds
+advisory-specific rows, cost data, and a workbook per advisory. Files are named
+with the tracking ID (`rows_<safe>.json`, `cost_<safe>.json`, etc., where `safe`
+replaces `-` with `_`) so the two notices never overwrite each other's data.
 
 Each step reads/writes JSON in a local `data/` folder (git-ignored). Run order
-matters; later steps depend on earlier outputs. All commands run **from the repo
-root**.
+matters; later steps depend on earlier outputs. Run **from the repo root**.
 
 | Step | Script | Reads | Writes |
 |------|--------|-------|--------|
-| 1 | [scripts/1_inventory.ps1](scripts/1_inventory.ps1) | `config.json` | `data/vms.json`, `data/submap.json` |
-| 2 | [scripts/2_build_rows.py](scripts/2_build_rows.py) | `config.json`, `data/vms.json`, `data/submap.json` | `data/rows.json` |
-| 3 | [scripts/3_cost.ps1](scripts/3_cost.ps1) | `config.json`, `data/rows.json` | `data/cost.json`, `data/cost_window.json`, `data/cost_errors.json` |
-| 4 | [scripts/4_build_report.py](scripts/4_build_report.py) | `config.json`, `data/rows.json`, `data/cost.json`, `data/cost_window.json`, `data/vms.json`, `data/submap.json` | `<Org>_<Title>.xlsx` at repo root |
+| 1 | [scripts/1_inventory.ps1](../scripts/1_inventory.ps1) | `config.json` | `data/vms.json`, `data/submap.json` (VM location included) |
+| 2 | [scripts/2_build_advisory_rows.py](../scripts/2_build_advisory_rows.py) | `scripts/advisories.json`, `data/vms.json`, `data/submap.json` | `data/rows_<safe>.json` |
+| 3 | [scripts/3_cost_advisory.ps1](../scripts/3_cost_advisory.ps1) | `config.json`, `data/rows_<safe>.json`, `data/submap.json` | `data/cost_<safe>.json`, `data/cost_window_<safe>.json`, `data/cost_errors_<safe>.json`, (JGW) `data/storage_cost_<safe>.json` |
+| 4 | [scripts/4_build_advisory_report.py](../scripts/4_build_advisory_report.py) | `config.json`, `scripts/advisories.json`, the `data/*_<safe>.json` outputs | `<Org>_VM_Impact_<safe>.xlsx` at repo root |
 
-[scripts/classify.py](scripts/classify.py) is a **shared module** imported by both
-step 2 and step 4. It is the single source of truth for the SKU taxonomy.
+There is **no legacy pipeline**. Do not reintroduce non-advisory duplicate
+scripts (e.g. `2_build_rows.py`, `3_cost.ps1`, `4_build_report.py`).
 
 ## The two layers of configuration — keep them separate
 
 1. **`config.json`** (copied from `config.example.json`, git-ignored): the
-   *easy knobs* — `tenantId`, percentage, window days, dates, display/branding,
-   family-label ordering, and optional `tagColumns`. Changing the advisory's
-   dates/percentage/tenant should **never** require a code edit.
-2. **`scripts/classify.py`**: the *SKU ruleset* — which VM size families count as
-   `retire` / `price_v1` / `price_v2`. This IS the encoding of a specific
-   advisory. Edit here only when adapting to an advisory that covers different VM
-   families.
-
-When asked to "support a new advisory", first check whether it's just a
-config change (dates/percent/tenant) before touching `classify.py`.
+   *per-tenant knobs* — `tenantId`, `organizationName` (branding + output
+   filename), `costWindowDays`, dates, family-label ordering, throttling/recovery
+   tuning, and optional `tagColumns`.
+2. **`scripts/advisories.json`**: the *advisory ruleset* — one profile per
+   tracking ID. `mode` is `prfr` (tenant-wide family-based impact) or `jgw`
+   (region-based impact). Holds affected families/regions, excluded families,
+   excluded storage terms, percentage, title, and effective date. Adding a new
+   advisory should be a profile edit here, not a new script set.
 
 ## Key domain facts (don't re-derive these)
 
-- **Retirements** are modelled separately from **price increases**. Retiring
-  families (default Dv3/Dsv3/Ev3/Esv3) are **excluded** from the cost estimate —
-  they're being removed, not re-priced.
-- **Price waves**: `v1` = versionless families (Bv1, D, Ds, F, Fs, G, Gs, Ls, NP,
-  HC); `v2` = v2-series (Av2, Amv2, Dv2, Dsv2, Fsv2, Lsv2).
-- **Cost = AmortizedCost**, `MeterCategory = "Virtual Machines"`, trailing
-  `costWindowDays`. The `+X%` is applied on top. Amortized cost includes
-  RI-covered usage, so the increase figure is an **upper bound** for RI VMs
-  (existing Reserved Instances are NOT affected by the price change).
-- **Azure billing meter naming**: many Dv2 and Dsv2 sizes bill on a single
-  *combined* meter (e.g. `D4 v2/DS4 v2`), while Spot usage bills on standalone
-  meters (e.g. `DS3 v2 Spot`). `classify.meter_group()` canonicalizes these into
-  one row per family group via the `_CANON` map (e.g. both collapse to
-  `Dv2/Dsv2`) so the Cost Impact sheet doesn't show confusing duplicate rows.
-  All variants are still counted once in the wave total — there is no
+- **Retirements** (default Dv3/Dsv3/Ev3/Esv3) are modelled separately from price
+  increases and **excluded** from the cost estimate — they're being removed, not
+  re-priced.
+- **Price waves (PRFR-_4Z)**: `v1` = versionless families (Bv1, D, Ds, F, Fs, G,
+  Gs, Ls, NP, HC); `v2` = v2-series (Av2, Amv2, Dv2, Dsv2, Fsv2, Lsv2).
+- **JGW1-KG0 is regional**: VM impact is limited to the regions and excluded VM
+  families in `advisories.json`. Its Storage scope is estimated separately from
+  `MeterCategory = Storage`, with the notice-listed excluded storage services
+  removed. Keep VM and Storage totals separate; the JGW workbook has a dedicated
+  `Storage Cost Impact` sheet.
+- **Cost scope is always tenant-wide**. Cost collection enumerates every enabled
+  subscription from `data/submap.json`, uses `AmortizedCost` over
+  `costWindowDays`, and excludes `PricingModel = Reservation`. SavingsPlan usage
+  stays included.
+- **Billing meter naming**: many Dv2/Dsv2 sizes bill on a single *combined* meter
+  (e.g. `D4 v2/DS4 v2`); Spot usage bills on standalone meters. `classify.py`'s
+  `meter_group()` canonicalizes these into one row per family group so the VM
+  Cost Impact sheet doesn't show confusing duplicate rows — without
   double-counting.
 
-## VM size classification (how `classify.py` works)
+## VM size classification
 
-`SIZE_RE` parses `Standard_<prefix><number>[-<constrained>]<suffix>[_v<N>][_Promo]`.
-A trailing `S` on the letter prefix (e.g. `DS`) means premium storage → base `D` +
-`has_s=True`. `classify(size)` returns `(family_label, category)` where category is
-`retire` / `price_v1` / `price_v2`, or `(None, None)` when not covered. Validate
-any taxonomy change against real sizes before trusting it.
+The size parser lives **inline in `scripts/2_build_advisory_rows.py`**
+(`SIZE_RE` + `family()` + `classify_prfr()`). `SIZE_RE` parses
+`Standard_<prefix><number>[-<constrained>]<suffix>[_v<N>][_Promo]`; a trailing
+`S` on the letter prefix (e.g. `DS`) means premium storage. `scripts/classify.py`
+is a **separate** concern: it canonicalizes *billing meter* names for cost
+grouping (`meter_group()`), imported by step 4. Validate any taxonomy change
+against real sizes before trusting it.
+
+## Cost throttling and recovery (step 3)
+
+The Cost Management API returns HTTP 429 under load at large-tenant scale. Step 3
+is built to survive this:
+
+- `Invoke-SubCostQuery` retries per request with exponential backoff + jitter,
+  honors `Retry-After`, and refreshes the token on 401. Capped by `costMaxAttempts`
+  (config, default 12).
+- After the main sweep, a **multi-pass recovery** loop re-queries only the
+  still-failing subscriptions, `costRecoveryPasses` times (default 3) separated by
+  `costRecoveryCooldownSeconds` (default 90).
+- Subscriptions that still fail are written to `data/cost_errors_<safe>.json` —
+  **never silently dropped** — and surface on the workbook's **Failed
+  Subscriptions** tab plus a Summary warning banner. Some subs that run their own
+  cost automation persistently self-throttle and clear only on a later re-run.
 
 ## Conventions and gotchas
 
-- **Run Python steps from the repo root** (`python scripts/2_build_rows.py`). The
-  scripts resolve paths relative to the script file, so cwd must be repo root for
-  `config.json`/`data/` to resolve.
-- **Tags**: every VM tag is always captured in the **All Tags** column, so no tag
-  data is lost. `tagColumns` is optional and defaults to `[]`; it only promotes
-  specific tags into their own filterable columns. Do NOT hardcode customer-specific
-  tag names (e.g. AppID/Vendor) in the scripts — that's what `tagColumns` is for.
-- **PowerShell token handling**: `Get-AzAccessToken` returns a `SecureString` on
-  newer Az. Step 3 already converts it via `[System.Net.NetworkCredential]`. Keep
-  that guard if you touch the cost script.
-- **Cost query throttling**: the Cost Management API returns HTTP 429 under load.
-  Step 3 retries with exponential backoff inside `Invoke-CostQuery`. Persistently
-  failing subs are written to `data/cost_errors.json`, not silently dropped.
-- **Output filename** is derived from `organizationName` + `reportTitle`. Override
-  with the `OUTNAME` environment variable before running step 4. If the target
-  `.xlsx` is open in Excel, `wb.save()` throws `PermissionError` — the file is
-  locked; ask the user to close it (or use a different `OUTNAME`).
+- **Run from the repo root.** Scripts resolve paths relative to the script file,
+  so `config.json`/`data/` resolve correctly only from the repo root.
+- **PowerShell `ConvertTo-Json` array traps** (these bit us repeatedly): a
+  single-element array serializes as a bare object, and piping an *empty*
+  collection writes nothing (leaving a stale file). Always write arrays as
+  `Set-Content $path -Value (ConvertTo-Json -InputObject @($items) -Depth N -AsArray)`.
+- **Tags**: every VM tag is always captured in the **All Tags** column. `tagColumns`
+  is optional (`[]` by default) and only promotes specific tags into their own
+  filterable columns. Do NOT hardcode customer-specific tag names in the scripts.
+- **No customer-specific values in scripts.** The org name on the title and
+  filename comes from `config.organizationName`; advisory specifics come from
+  `advisories.json`. Keep it generic and publishable.
+- **PowerShell token handling**: `Get-AzAccessToken` can return a `SecureString`;
+  the cost script converts it. Keep that guard if you touch it.
+- **Output filename** derives from `organizationName`; override with the `OUTNAME`
+  environment variable. If the target `.xlsx` is open in Excel, `wb.save()` throws
+  `PermissionError` — ask the user to close it or use a different `OUTNAME`.
 - **Never commit** `config.json`, the `data/` folder, or generated `.xlsx` files.
-  `.gitignore` already excludes them. These can contain tenant IDs, subscription
-  IDs, resource names, and tag values.
+  `.gitignore` already excludes them; they can contain tenant/subscription IDs,
+  resource names, and tag values.
 
 ## Validating changes
 
-There's no automated test suite. To validate a change, stage real inventory JSON
-into `data/` (renamed to `vms.json`, `submap.json`, `cost.json`,
-`cost_window.json`), copy `config.example.json` to `config.json`, then run steps 2
-and 4 and confirm the printed counts and cost totals are unchanged. Clean up the
-staged `data/`, `config.json`, and generated `.xlsx` afterward so the repo stays
-publish-ready.
+There's no automated test suite. To validate without live Azure calls, stage real
+`data/vms.json` + `data/submap.json`, then run the Python steps:
+
+```powershell
+python scripts/2_build_advisory_rows.py --advisory PRFR-_4Z
+python scripts/2_build_advisory_rows.py --advisory JGW1-KG0
+python scripts/4_build_advisory_report.py --advisory PRFR-_4Z
+```
+
+Compile-check Python (`python -m py_compile scripts\4_build_advisory_report.py`)
+and parse-check PowerShell before a live run. A live run requires the user's
+existing `Connect-AzAccount` session. Clean up staged `data/`, `config.json`, and
+generated `.xlsx` afterward so the repo stays publish-ready.
 
 ## Scope discipline
 
 Keep this tool small and read-only. Do not add write operations against Azure,
-new external dependencies beyond `openpyxl` + the Az modules, or
-customer-specific logic in the scripts. Customer specifics belong in `config.json`.
+new dependencies beyond `openpyxl` + the Az modules, or customer-specific logic in
+the scripts. Customer specifics belong in `config.json`; advisory specifics belong
+in `advisories.json`.

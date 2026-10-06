@@ -1,0 +1,47 @@
+{
+  "PRFR-_4Z": {
+    "title": "Azure VM Retirement and Price-Change Impact",
+    "mode": "prfr",
+    "effectiveDate": "2027-02-01",
+    "retirementEndOfLife": "2029-11-15",
+    "priceIncreasePercent": 25,
+    "notes": [
+      "The cost query is tenant-wide and excludes PricingModel = Reservation. SavingsPlan usage remains included because the notice says Savings Plans reflect updated underlying VM rates."
+    ]
+  },
+  "JGW1-KG0": {
+    "title": "Regional Azure VM Price-Change Impact",
+    "mode": "jgw",
+    "effectiveDate": "2027-02-01",
+    "regions": {
+      "westeurope": 0.09,
+      "northeurope": 0.17,
+      "francecentral": 0.11,
+      "francesouth": 0.11,
+      "norwayeast": 0.09,
+      "norwaywest": 0.09,
+      "southeastasia": 0.08
+    },
+    "excludedStorageTerms": [
+      "Azure Container Storage",
+      "Managed Lustre",
+      "Cross Region Replication",
+      "Blob Features",
+      "Change Feed",
+      "General Block Blob",
+      "Import/Export",
+      "Queues",
+      "Standard Page Blob",
+      "Storage Actions",
+      "Storage Bandwidth",
+      "Storage Discovery",
+      "Tables",
+      "Transaction Optimized"
+    ],
+    "excludedFamilies": ["Bv1", "D", "Ds", "F", "Fs", "G", "Gs", "L", "NP", "HC", "Av2", "Amv2", "Dv2", "Dsv2", "Fsv2", "Lsv2", "Dsv7", "Ddsv7", "Dlsv7", "Dldsv7", "Esv7", "Edsv7"],
+    "notes": [
+      "Storage is estimated separately from AmortizedCost in the affected regions; notice-listed excluded Storage services are removed from the estimate.",
+      "Existing Reserved Instance pricing is locked at purchase."
+    ]
+  }
+}
